@@ -1,0 +1,5 @@
+#!/bin/bash
+./build
+docker build -t prasadg193/secret-controller:1.0.0 .
+docker push prasadg193/secret-controller:1.0.0
+rm secret-controller

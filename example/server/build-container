@@ -1,0 +1,5 @@
+#!/bin/bash
+./build
+docker build -t prasadg193/vault-example:server .
+docker push prasadg193/vault-example:server
+rm server

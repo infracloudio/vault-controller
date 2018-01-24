@@ -17,7 +17,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/hashicorp/vault/api"
 )
@@ -27,13 +26,6 @@ type tokenHandler struct {
 }
 
 func (h tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	_, err := os.Stat(tokenFile)
-	if !os.IsNotExist(err) {
-		log.Println("Token file already exists")
-		w.WriteHeader(409)
-		return
-	}
-
 	var swi api.SecretWrapInfo
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -68,38 +60,9 @@ func (h tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-
-	f, err := os.Create(tokenFile)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
-		return
-	}
-	defer f.Close()
-
-	err = json.NewEncoder(f).Encode(&secret)
-	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
-		return
-	}
-	log.Printf("wrote %s", tokenFile)
+	log.Printf("received token from vault controller")
 	w.WriteHeader(200)
-}
-
-func readToken(tokenFile string) (string, error) {
-	log.Printf("Reading vault secret file from %s", tokenFile)
-	data, err := ioutil.ReadFile(tokenFile)
-	if err != nil {
-		return "", fmt.Errorf("could not read secret file: %v", err)
-	}
-
-	var secret Secret
-	err = json.Unmarshal(data, &secret)
-	if err != nil {
-		return "", fmt.Errorf("could not parse token file %v", err)
-	}
-	return secret.Auth.ClientToken, nil
+	token <- secret.Auth.ClientToken
 }
 
 func requestToken(vaultControllerAddr, name, namespace string) error {

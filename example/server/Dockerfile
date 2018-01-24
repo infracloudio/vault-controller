@@ -1,4 +1,4 @@
 FROM scratch
 MAINTAINER Prasad Ghangal <prasad.ghangal@gmail.com>
-ADD vault-init /vault-init
-ENTRYPOINT ["/vault-init"]
+ADD server /server
+ENTRYPOINT ["/server"]

@@ -12,8 +12,8 @@
 package main
 
 import (
-	"fmt"
-	"io/ioutil"
+	"flag"
+	"github.com/fsnotify/fsnotify"
 	"log"
 	"net/http"
 	"os"
@@ -21,29 +21,29 @@ import (
 	"path"
 	"syscall"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
 )
 
 const tokenFile = "/var/run/secrets/vaultproject.io/secret.json"
+const certFile = "/var/run/secrets/vaultproject.io/cert.pem"
+const caCertFile = "/var/run/secrets/vaultproject.io/ca-cert.pem"
+const privKeyFile = "/var/run/secrets/vaultproject.io/private.pem"
+
+var (
+	namespace   string
+	serviceName string
+	vaultAddr   string
+	vaultToken  string
+	name        string
+)
 
 func main() {
 	log.Println("Starting vault-init...")
 
-	name := os.Getenv("POD_NAME")
-	if name == "" {
-		log.Fatal("POD_NAME must be set and non-empty")
-	}
-
-	namespace := os.Getenv("POD_NAMESPACE")
-	if namespace == "" {
-		log.Fatal("POD_NAMESPACE must be set and non-empty")
-	}
-
-	vaultAddr := os.Getenv("VAULT_ADDR")
-	if vaultAddr == "" {
-		vaultAddr = "http://vault:8200"
-	}
+	flag.StringVar(&namespace, "namespace", "default", "namespace as defined by pod.metadata.namespace")
+	flag.StringVar(&serviceName, "service-name", "", "Kubernetes service name that resolves to this Pod")
+	flag.StringVar(&name, "name", "", "name as defined by pod.metadata.name")
+	flag.StringVar(&vaultAddr, "vault-addr", "https://vault:8200", "Vault service address")
+	flag.Parse()
 
 	vaultControllerAddr := os.Getenv("VAULT_CONTROLLER_ADDR")
 	if vaultControllerAddr == "" {
@@ -61,6 +61,17 @@ func main() {
 	// Remove exiting token files before requesting a new one.
 	if err := os.Remove(tokenFile); err != nil {
 		log.Printf("could not remove token file at %s: %s", tokenFile, err)
+	}
+
+	// Remove existing certs and key
+	if err := os.Remove(certFile); err != nil {
+		log.Printf("could not remove cert file from %s: %s", certFile, err)
+	}
+	if err := os.Remove(caCertFile); err != nil {
+		log.Printf("could not remove ca-cert file from %s: %s", caCertFile, err)
+	}
+	if err := os.Remove(privKeyFile); err != nil {
+		log.Printf("could not remove private-key file from %s: %s", privKeyFile, err)
 	}
 
 	// Set up a file watch on the wrapped vault token.
@@ -104,26 +115,7 @@ func main() {
 	case <-quit:
 		log.Printf("Shutdown signal received, exiting...")
 	case <-done:
+		writeCertsToFile()
 		log.Println("Successfully obtained and unwrapped the vault token, exiting...")
 	}
-}
-
-func requestToken(vaultControllerAddr, name, namespace string) error {
-	u := fmt.Sprintf("%s/token?name=%s&namespace=%s", vaultControllerAddr, name, namespace)
-	log.Printf("Requesting a new wrapped token from %s", vaultControllerAddr)
-	resp, err := http.Post(u, "", nil)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == 202 {
-		return nil
-	}
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	return fmt.Errorf("%s", data)
 }

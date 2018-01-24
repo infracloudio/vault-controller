@@ -1,5 +1,5 @@
 #!/bin/bash
 ./build
-docker build -t kelseyhightower/vault-controller:0.0.1 .
-docker push kelseyhightower/vault-controller:0.0.1
+docker build -t prasadg193/vault-controller:1.0.0 .
+docker push prasadg193/vault-controller:1.0.0
 rm vault-controller

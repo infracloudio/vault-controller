@@ -12,6 +12,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -23,12 +24,25 @@ import (
 	"github.com/hashicorp/vault/api"
 )
 
-var vaultClient *api.Client
+var (
+	vaultClient   *api.Client
+	pkiTTL        string
+	clusterDomain string
+	namespace     string
+	vaultAddr     string
+	vaultToken    string
+)
 
 func main() {
 	log.Println("Starting vault-controller app...")
+	flag.StringVar(&pkiTTL, "pki-ttl", "60s", "certificate time to live")
+	flag.StringVar(&clusterDomain, "cluster-domain", "cluster.local", "Kubernetes cluster domain")
+	flag.StringVar(&namespace, "namespace", "default", "namespace as defined by pod.metadata.namespace")
+	flag.StringVar(&vaultAddr, "vault-addr", "http://vault:8200", "Vault service address")
 
-	if os.Getenv("VAULT_TOKEN") == "" {
+	flag.Parse()
+
+	if vaultToken = os.Getenv("VAULT_TOKEN"); vaultToken == "" {
 		log.Fatal("VAULT_TOKEN must be set and non-empty")
 	}
 	if os.Getenv("VAULT_WRAP_TTL") == "" {
@@ -48,6 +62,7 @@ func main() {
 	}()
 
 	log.Println("Listening for token requests.")
+	go CertHandler()
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

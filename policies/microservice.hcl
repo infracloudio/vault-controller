@@ -9,3 +9,13 @@ path "pki/issue/client" {
 path "pki/issue/server" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
+
+# Allow token to read secret
+# cert path=/secret/certs/<namespace>/<service-name>
+path "secret/certs/vault-controller/server" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "secret/certs/vault-controller/client" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
