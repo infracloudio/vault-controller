@@ -28,7 +28,7 @@ var (
 )
 
 func updateDeployment(service string) {
-	deploymentsClient := clientset.AppsV1beta1().Deployments(namespace)
+	deploymentsClient := clientset.AppsV1beta1().Deployments(corev1.NamespaceAll)
 	dlist, err := deploymentsClient.List(metav1.ListOptions{})
 	if err != nil {
 		log.Println("Error in getting list of deployment")
@@ -77,8 +77,8 @@ func readCertPath(namespace, name string) string {
 }
 
 // ReadCerts reads certs from vault
-func readCerts(service string) (*ReadSecret, error) {
-	u := fmt.Sprintf("%s/v1/%s", vaultAddr, readCertPath(namespace, service))
+func readCerts(ns, service string) (*ReadSecret, error) {
+	u := fmt.Sprintf("%s/v1/%s", vaultAddr, readCertPath(ns, service))
 	request, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("read certs: error creating request for service %v - %v\n", service, err)
@@ -114,7 +114,8 @@ func readCerts(service string) (*ReadSecret, error) {
 
 func rotateCerts(service corev1.Service) error {
 	serviceName := service.ObjectMeta.Name
-	certs, err := readCerts(serviceName)
+	serviceNs := service.ObjectMeta.Namespace
+	certs, err := readCerts(serviceNs, serviceName)
 	if err != nil {
 		return err
 	}
@@ -130,7 +131,7 @@ func rotateCerts(service corev1.Service) error {
 	log.Printf("certificate expiring in %v sec for service %v", exp, serviceName)
 	if exp <= certThreshold {
 		// delete certs, generate new certs and perform rolling update if expired
-		deleteCerts(readCertPath(namespace, serviceName))
+		deleteCerts(readCertPath(serviceNs, serviceName))
 		updateService(service)
 		updateDeployment(serviceName)
 	}
@@ -154,7 +155,7 @@ func checkCerts() {
 	if err != nil {
 		panic(err.Error())
 	}
-	serviceClient = clientset.CoreV1().Services(namespace)
+	serviceClient = clientset.CoreV1().Services(corev1.NamespaceAll)
 	ser, err := serviceClient.List(metav1.ListOptions{})
 	if err != nil {
 		log.Println("Error in getting list of services")

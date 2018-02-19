@@ -22,8 +22,9 @@ type Service struct {
 }
 
 type SvsMetadata struct {
-	Labels *Label `json:"labels,omitempty"`
-	Name   string `json:"name,omitempty"`
+	Labels    *Label `json:"labels,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
 }
 
 type Label struct {
@@ -60,7 +61,7 @@ func serviceWatcher() {
 	defer close(stopCh)
 
 	watchlist := cache.NewListWatchFromClient(
-		clientset.CoreV1().RESTClient(), "services", namespace, fields.Everything())
+		clientset.CoreV1().RESTClient(), "services", v1.NamespaceAll, fields.Everything())
 	_, controller := cache.NewInformer(
 		watchlist,
 		&v1.Service{},
@@ -93,6 +94,62 @@ func serviceWatcher() {
 	)
 	controller.Run(stopCh)
 
+}
+
+func createRole(rolePath string) error {
+	u := fmt.Sprintf("%s/v1%s", vaultAddr, rolePath)
+	parameters := map[string]string{
+		"allow_any_name":    "true",
+		"allowed_domains":   "cluster.local",
+		"allow_subdomains":  "true",
+		"max_ttl":           "72h",
+		"enforce_hostnames": "true",
+	}
+	var body bytes.Buffer
+	err := json.NewEncoder(&body).Encode(&parameters)
+	if err != nil {
+		return fmt.Errorf("cert handler: error encoding create role request body: %v", err)
+	}
+
+	request, err := http.NewRequest("POST", u, &body)
+	if err != nil {
+		return fmt.Errorf("cert handler: error in create role request: %v", err)
+	}
+	request.Header.Add("X-Vault-Token", vaultToken)
+
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("cert handler: error during create role request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		return fmt.Errorf("Response %v", resp.StatusCode)
+	}
+	log.Printf("Role %v created successfully\n", rolePath)
+	return nil
+}
+
+func createPolicy(path string, certPath string) error {
+	u := fmt.Sprintf("%s/v1%s", vaultAddr, path)
+	payload := []byte(`{"rules": "path \"` + certPath + `\" {\n  capabilities = [\"read\"]\n}"}`)
+	request, err := http.NewRequest("PUT", u, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("cert handler: error creating create policy request: %v", err)
+	}
+	request.Header.Add("X-Vault-Token", vaultToken)
+	request.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return fmt.Errorf("cert handler: error during create policy request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 204 {
+		return fmt.Errorf("Response %v", resp.StatusCode)
+	}
+	log.Printf("Policy %v created successfully\n", path)
+	return nil
 }
 
 func generateCerts(p PKIConfig) (*PKIData, error) {
@@ -142,6 +199,14 @@ func serviceDomainName(name, namespace, domain string) string {
 	return fmt.Sprintf("%s.%s.svc.%s", name, namespace, domain)
 }
 
+func policyPath(name string) string {
+	return fmt.Sprintf("/sys/policy/%s", name)
+}
+
+func pkiRolePath(name string) string {
+	return fmt.Sprintf("/pki/roles/%s", name)
+}
+
 func certIssuePath(name string) string {
 	return fmt.Sprintf("/pki/issue/%s", name)
 }
@@ -165,14 +230,14 @@ func writeCerts(path string, p *PKIData) error {
 	return nil
 }
 
-func deleteCerts(path string) error {
-	log.Println("Deleting certificates for", path)
+func deleteFromVault(path string) error {
+	log.Println("Deleting", path)
 	_, err := vaultClient.Logical().Delete(path)
 	return err
 }
 
-func updateServiceLabel(service string) {
-	serviceClient := clientset.CoreV1().Services(namespace)
+func updateServiceLabel(ns, service string) {
+	serviceClient := clientset.CoreV1().Services(ns)
 	s, err := serviceClient.Get(service, metav1.GetOptions{})
 	if err != nil || s == nil {
 		log.Printf("Error in getting service %v - %v\n", service, err)
@@ -195,8 +260,19 @@ func CertHandler() {
 			meta := n.Metadata
 			if meta.Labels != nil && meta.Labels.Gencert == "true" && meta.Name != "" {
 				serviceName := meta.Name
+				serviceNs := meta.Namespace
+				err := createRole(pkiRolePath(serviceName))
+				if err != nil {
+					log.Printf("Role creation failed for service %v - %v", serviceName, err)
+					continue
+				}
+				err = createPolicy(policyPath(serviceName), certWritePath(serviceNs, serviceName))
+				if err != nil {
+					log.Printf("Policy creation failed for service %v - %v", serviceName, err)
+					continue
+				}
 				p := PKIConfig{
-					CommonName:  serviceDomainName(serviceName, namespace, clusterDomain),
+					CommonName:  serviceDomainName(serviceName, serviceNs, clusterDomain),
 					DNSNames:    serviceName,
 					IPAddresses: "127.0.0.1",
 					IssuePath:   certIssuePath(serviceName),
@@ -207,21 +283,41 @@ func CertHandler() {
 					log.Println(err)
 					continue
 				}
-				err = writeCerts(certWritePath(namespace, serviceName), pki)
+				err = writeCerts(certWritePath(serviceNs, serviceName), pki)
 				if err != nil {
 					log.Println("Certificate write failed for service %v - %v\n", serviceName, err)
 					continue
 				}
 				// update service label gencert="false"
-				updateServiceLabel(serviceName)
+				updateServiceLabel(serviceNs, serviceName)
 			}
 		case d := <-delService:
 			meta := d.Metadata
 			if meta.Labels != nil && meta.Labels.Gencert != "" && meta.Name != "" {
-				err := deleteCerts(certWritePath(namespace, meta.Name))
+				// delete Certs
+				err := deleteFromVault(certWritePath(meta.Namespace, meta.Name))
 				if err != nil {
-					log.Println("Certificate delete failed for service %v - %v\n", meta.Name, err)
+					log.Printf("Certificate delete failed for service %v - %v\n", meta.Name, err)
+				} else {
+					log.Printf("Certificate deleted successfully for service %v\n", meta.Name)
 				}
+
+				// delete role
+				err = deleteFromVault(pkiRolePath(meta.Name))
+				if err != nil {
+					log.Printf("PKI Role delete failed for service %v - %v\n", meta.Name, err)
+				} else {
+					log.Printf("PKI Role deleted successfully for service %v\n", meta.Name)
+				}
+
+				// delete policy
+				err = deleteFromVault(policyPath(meta.Name))
+				if err != nil {
+					log.Printf("Policy delete failed for service %v - %v\n", meta.Name, err)
+				} else {
+					log.Printf("Policy deleted successfully for service %v\n", meta.Name)
+				}
+
 			}
 
 		}

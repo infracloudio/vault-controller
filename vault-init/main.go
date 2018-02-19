@@ -29,11 +29,12 @@ const caCertFile = "/var/run/secrets/vaultproject.io/ca-cert.pem"
 const privKeyFile = "/var/run/secrets/vaultproject.io/private.pem"
 
 var (
-	namespace   string
-	serviceName string
-	vaultAddr   string
-	vaultToken  string
-	name        string
+	namespace    string
+	serviceName  string
+	vaultAddr    string
+	vaultToken   string
+	name         string
+	retryTimeout int
 )
 
 func main() {
@@ -42,12 +43,17 @@ func main() {
 	flag.StringVar(&namespace, "namespace", "default", "namespace as defined by pod.metadata.namespace")
 	flag.StringVar(&serviceName, "service-name", "", "Kubernetes service name that resolves to this Pod")
 	flag.StringVar(&name, "name", "", "name as defined by pod.metadata.name")
-	flag.StringVar(&vaultAddr, "vault-addr", "https://vault:8200", "Vault service address")
+	flag.IntVar(&retryTimeout, "retry-timeout", 1, "retry timeout for token/certs in minutes")
 	flag.Parse()
 
 	vaultControllerAddr := os.Getenv("VAULT_CONTROLLER_ADDR")
 	if vaultControllerAddr == "" {
 		vaultControllerAddr = "http://vault-controller"
+	}
+
+	vaultAddr = os.Getenv("VAULT_ADDR")
+	if vaultAddr == "" {
+		vaultAddr = "http://vault:8200"
 	}
 
 	http.Handle("/", tokenHandler{vaultAddr})
@@ -86,12 +92,17 @@ func main() {
 
 	done := make(chan bool)
 	retryDelay := 5 * time.Second
+	retryCount := retryTimeout * 60 / 5
 	go func() {
 		for {
 			err := requestToken(vaultControllerAddr, name, namespace)
 			if err != nil {
 				log.Printf("token request: Request error %v; retrying in %v", err, retryDelay)
 				time.Sleep(retryDelay)
+				if retryCount <= 0 {
+					log.Fatal("Token request timeout")
+				}
+				retryCount -= 1
 				continue
 			}
 			log.Println("Token request complete; waiting for callback...")

@@ -28,7 +28,6 @@ var (
 	vaultClient   *api.Client
 	pkiTTL        string
 	clusterDomain string
-	namespace     string
 	vaultAddr     string
 	vaultToken    string
 )
@@ -37,7 +36,6 @@ func main() {
 	log.Println("Starting vault-controller app...")
 	flag.StringVar(&pkiTTL, "pki-ttl", "60s", "certificate time to live")
 	flag.StringVar(&clusterDomain, "cluster-domain", "cluster.local", "Kubernetes cluster domain")
-	flag.StringVar(&namespace, "namespace", "default", "namespace as defined by pod.metadata.namespace")
 	flag.StringVar(&vaultAddr, "vault-addr", "http://vault:8200", "Vault service address")
 
 	flag.Parse()

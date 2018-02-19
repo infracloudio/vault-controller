@@ -10,7 +10,7 @@ spec:
         app: client
         service: client
       annotations:
-        vaultproject.io/policies: "default,microservice"
+        vaultproject.io/policies: "default,client"
         vaultproject.io/ttl: "24h"
     spec:
       containers:

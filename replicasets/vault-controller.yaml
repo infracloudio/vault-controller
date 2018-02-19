@@ -31,7 +31,6 @@ spec:
                   fieldPath: metadata.namespace
           args:
             - "-cluster-domain=cluster.local"
-            - "-namespace=$(POD_NAMESPACE)"
             - "-pki-ttl=5m"
         - name: kubectl
           image: kelseyhightower/kubectl:1.4.0

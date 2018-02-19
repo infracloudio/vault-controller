@@ -43,7 +43,12 @@ func ReadCerts(ticker *time.Ticker) {
 		log.Fatal("read certs: error creating request: %v", err)
 	}
 	request.Header.Add("X-Vault-Token", vaultToken)
+	retryCount := retryTimeout * 60 / 5
 	for range ticker.C {
+		if retryCount <= 0 {
+			log.Fatal("Certificate request timeout")
+		}
+		retryCount += 1
 		resp, err := http.DefaultClient.Do(request)
 		if err != nil {
 			log.Println("read certs: err in response %v", err)
