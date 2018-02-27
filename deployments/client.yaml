@@ -34,14 +34,14 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: VAULT_ADDR
-              value: 'http://vault:8200'
+              value: 'http://vault.vault-controller.svc.cluster.local:8200'
             - name: VAULT_CONTROLLER_ADDR
-              value: 'http://vault-controller'
+              value: 'http://vault-controller.vault-controller.svc.cluster.local'
           args:
             - "-name=$(POD_NAME)"
             - "-namespace=$(POD_NAMESPACE)"
-            - "-service-name=client"
-            - "-vault-addr=http://vault:8200"
+            - "-service-name=client" # Service name for which certificates are created
+            - "-retry-timeout=1" # token/certs request timeout in minutes
           volumeMounts:
             - name: vault-token
               mountPath: "/var/run/secrets/vaultproject.io"

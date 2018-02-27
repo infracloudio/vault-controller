@@ -9,17 +9,12 @@ import (
 	"log"
 	"net/http"
 	"time"
-	//	"path/filepath"
 
-	//"k8s.io/api/extensions/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
-	//"k8s.io/client-go/kubernetes/typed/apps/v1"
-	//	"k8s.io/client-go/tools/clientcmd"
-	//	"k8s.io/client-go/util/homedir"
 )
 
 var (
@@ -27,8 +22,8 @@ var (
 	serviceClient v1.ServiceInterface
 )
 
-func updateDeployment(service string) {
-	deploymentsClient := clientset.AppsV1beta1().Deployments(corev1.NamespaceAll)
+func updateDeployment(ns, service string) {
+	deploymentsClient := clientset.AppsV1beta1().Deployments(ns)
 	dlist, err := deploymentsClient.List(metav1.ListOptions{})
 	if err != nil {
 		log.Println("Error in getting list of deployment")
@@ -40,7 +35,7 @@ func updateDeployment(service string) {
 			d.Spec.Template.ObjectMeta.Labels["lastcertupdate"] = time.Now().Format("02-01-2006T15.04.05")
 			_, err = deploymentsClient.Update(&d)
 			if err != nil {
-				log.Println("err in rolling update for %v - %v", d.ObjectMeta.Name, err)
+				log.Printf("err in rolling update for %v - %v\n", d.ObjectMeta.Name, err)
 				return
 			}
 			log.Println("Rolling update initiated for", d.ObjectMeta.Name)
@@ -48,11 +43,16 @@ func updateDeployment(service string) {
 	}
 }
 
-func updateService(service corev1.Service) {
-	service.ObjectMeta.Labels["gencert"] = "true"
-	_, err := serviceClient.Update(&service)
+func updateService(ns string, name string) {
+	sc := clientset.CoreV1().Services(ns)
+	service, err := sc.Get(name, metav1.GetOptions{})
 	if err != nil {
-		log.Println("Error in updating service", service)
+		log.Println("Error in getting service", service, err)
+	}
+	service.ObjectMeta.Labels["gencert"] = "true"
+	_, err = sc.Update(service)
+	if err != nil {
+		log.Println("Error in updating service", service, err)
 	}
 }
 
@@ -128,12 +128,14 @@ func rotateCerts(service corev1.Service) error {
 		return fmt.Errorf("certificate parsing error for service %s - %v", serviceName, err)
 	}
 	exp := x509cert.NotAfter.Sub(time.Now()).Seconds()
-	log.Printf("certificate expiring in %v sec for service %v", exp, serviceName)
-	if exp <= certThreshold {
+	if exp <= float64(certThreshold*60) {
 		// delete certs, generate new certs and perform rolling update if expired
+		log.Printf("certificate expired for %v. Deleting old and generating new\n", serviceName)
 		deleteCerts(readCertPath(serviceNs, serviceName))
-		updateService(service)
-		updateDeployment(serviceName)
+		updateService(serviceNs, serviceName)
+		updateDeployment(serviceNs, serviceName)
+	} else {
+		log.Printf("certificate expiring in %v sec for service %v\n", exp, serviceName)
 	}
 	return nil
 }

@@ -127,6 +127,6 @@ func main() {
 		log.Printf("Shutdown signal received, exiting...")
 	case <-done:
 		writeCertsToFile()
-		log.Println("Successfully obtained and unwrapped the vault token, exiting...")
+		log.Println("Successfully obtained vault token and certificate, exiting...")
 	}
 }

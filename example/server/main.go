@@ -93,7 +93,7 @@ func startServer() {
 	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello from client service")
+		fmt.Fprintf(w, "Hello from server")
 	})
 
 	log.Fatal(server.ListenAndServeTLS("", ""))

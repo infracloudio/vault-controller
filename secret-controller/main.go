@@ -9,17 +9,13 @@ import (
 )
 
 var (
-	namespace   string
-	serviceName string
-	vaultAddr   string
-	token       chan string
-	vaultToken  string
-	name        string
-)
-
-// certificate renewal threshold in sec
-const (
-	certThreshold = 60
+	namespace     string
+	serviceName   string
+	vaultAddr     string
+	token         chan string
+	vaultToken    string
+	name          string
+	certThreshold int
 )
 
 func main() {
@@ -28,6 +24,7 @@ func main() {
 	flag.StringVar(&namespace, "namespace", "default", "namespace as defined by pod.metadata.namespace")
 	flag.StringVar(&name, "name", "", "name as defined by pod.metadata.name")
 	flag.StringVar(&vaultAddr, "vault-addr", "https://vault:8200", "Vault service address")
+	flag.IntVar(&certThreshold, "cert-threshold", 1, "certificate expiry threshold")
 	flag.Parse()
 
 	vaultControllerAddr := os.Getenv("VAULT_CONTROLLER_ADDR")

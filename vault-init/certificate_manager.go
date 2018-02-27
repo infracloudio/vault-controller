@@ -48,7 +48,7 @@ func ReadCerts(ticker *time.Ticker) {
 		if retryCount <= 0 {
 			log.Fatal("Certificate request timeout")
 		}
-		retryCount += 1
+		retryCount -= 1
 		resp, err := http.DefaultClient.Do(request)
 		if err != nil {
 			log.Println("read certs: err in response %v", err)

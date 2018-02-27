@@ -40,7 +40,7 @@ spec:
           args:
             - "-name=$(POD_NAME)"
             - "-namespace=$(POD_NAMESPACE)"
-            - "-service-name=server"
+            - "-service-name=server" # Service name for which certificates are created
             - "-retry-timeout=1" # token/certs request timeout in minutes
           volumeMounts:
             - name: vault-token
