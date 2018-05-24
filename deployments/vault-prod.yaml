@@ -1,0 +1,20 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: vault
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      containers:
+        - name: vault
+          image: "vault:0.10.0"
+          args:
+            - "server"
+            - "-log-level=debug"
+          env:
+            - name: VAULT_LOCAL_CONFIG
+              value: '{"backend": {"file": {"path": "/mnt/vault/data"}}, "listener": { "tcp": { "address": "0.0.0.0:8200", "tls_disable": 1 } }, "default_lease_ttl": "168h", "max_lease_ttl": "720h", "disable_mlock": true}'
